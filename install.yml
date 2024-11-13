@@ -1,0 +1,49 @@
+---
+- name: Configure CI 
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    project_name: 'fast2024t3'
+
+  vars_files:
+    - vars/vars.yml
+
+  tasks:
+    - name: Wait for server to boot
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Check if Docker Service is Up and Running
+      ansible.builtin.service_facts:
+
+    - name: Print service facts
+      ansible.builtin.debug:
+        var: ansible_facts.services['docker.service']
+
+    - name: Starting Deploy
+      when: ansible_facts.services['docker.service'].state == 'running'
+      block:
+        - name: Generate Docker Compose to Deploy Jenkins
+          ansible.builtin.template:
+            src: 'docker-compose.j2'
+            dest: '/tmp/docker-compose.yml'
+            mode: '0644'
+
+        - name: Deploy Jenkins on Docker Swarm
+          community.docker.docker_stack:
+            state: present
+            name: "{{ project_name }}"
+            compose:
+              - /tmp/docker-compose.yml
+
+        - name: Remove Temporary Files
+          ansible.builtin.file:
+            state: absent
+            path: "{{ item }}"
+          loop:
+            - '/tmp/docker-compose.yml'
